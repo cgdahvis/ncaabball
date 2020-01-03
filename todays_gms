@@ -83,6 +83,6 @@ upcoming_gms=games.loc[games['datetime'].between(today,today_next_week)]
 #upcoming_gms=upcoming_gms.drop_duplicates(subset='boxscore_index',keep='last')
 
 upcoming_gms['dupe_identifier']=abs(upcoming_gms['fair_value']) #way to identify duplicates
-today_gms=upcoming_gms[['datetime','team','opponent_abbr','fair_value','team_srs','opp_rating','proj_total','pro_ttl_reg2','bottom_up_total_proj','location_adjustment','dupe_identifier']].drop_duplicates(subset=['dupe_identifier']).sort_values(by='datetime') 
+today_gms=upcoming_gms[['datetime','team','opponent_abbr','fair_value','adj_mod_1','adj_mod_2','team_srs','opp_rating','proj_total','pro_ttl_reg2','bottom_up_total_proj','location_adjustment','dupe_identifier']].drop_duplicates(subset=['dupe_identifier']).sort_values(by='datetime') 
 
 today_gms.to_excel("output.xlsx") 
