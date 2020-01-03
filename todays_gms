@@ -1,0 +1,88 @@
+from sportsreference.ncaab.teams import Teams
+from sportsreference.ncaab.schedule import Schedule
+
+%pylab inline
+import pandas as pd
+import seaborn as sns
+sns.set_style("darkgrid")
+sns.set(font_scale=1.6)
+
+#get all teams in a list
+team_list=[]
+
+#goal - to see relationship between difference in two team simple performance rating and score outcome (regression)
+teams = Teams()
+for team in teams:
+    team_list.append(team.abbreviation)
+
+this_yr=pd.DataFrame()
+
+for i in team_list:
+    this_yr=this_yr.append(Schedule(i,2020).dataframe) #note basketball season is 2019/2020
+
+redundant_list=[] #this is to make a column of the team who is being queried
+
+for i in team_list: #for each team in the list
+    for index in range((len(Schedule(i,2020).dataframe))):   
+        redundant_list.append(i)
+        
+this_yr['team']=redundant_list
+#CREATE A COLUMN FOR SPREAD
+this_yr['spread']=this_yr['points_for']-this_yr['points_against']
+
+dfs=Teams(2020).dataframes
+
+df=dfs[['abbreviation','simple_rating_system','pace','total_rebound_percentage','three_point_field_goal_percentage']] #standalone dataframe very simple
+
+games=this_yr
+games=games.set_index('team') #standalone dataframe for game line items
+
+df=df.rename(columns={'abbreviation':'team'})
+
+games=games.merge(df,left_on='team',right_on='team')
+
+games=games.rename(columns={'simple_rating_system':'team_srs'})
+
+df=df.rename(columns={'team':'opponent_abbr','simple_rating_system':'opp_rating','total_rebound_percentage':'opp_rebound_pct','three_point_field_goal_percentage':'opp_3p_fgpct'})
+
+games['total_points']=games['points_for']+games['points_against']
+games['total_points']=pd.to_numeric(games['total_points'])
+
+games['opponent_abbr']=games['opponent_abbr'].str.upper()
+games['opponent_abbr']=games['opponent_abbr'].str.replace(' ','-')
+
+
+games=games.merge(df,left_on='opponent_abbr',right_on='opponent_abbr')
+
+games['team_minus_opponent']=games['team_srs']-games['opp_rating']
+
+#home advntage adjustment
+
+games['home_advantage']=5*pd.get_dummies(games['location'])['Home']
+games['away_advantage']=-5*pd.get_dummies(games['location'])['Away']
+games['location_adjustment']=games['home_advantage']+games['away_advantage']
+games['fair_value']=.92*(games['team_minus_opponent'])+games['location_adjustment']
+
+games['proj_total']=.06*16.4 +1.342*games['pace_x']-.809*games['total_rebound_percentage']+43.21*games['three_point_field_goal_percentage']+1.27*games['pace_y']-.668*games['opp_rebound_pct']+61.1*games['opp_3p_fgpct'] #regressed projection..first constant for OT
+games['pro_ttl_reg2']=-207+.06*16.32+2.05*games['pace_x']-.089*games['total_rebound_percentage']+88.94*games['three_point_field_goal_percentage']+2.02*games['pace_y']+.137*games['opp_rebound_pct']+98.98*games['opp_3p_fgpct']
+
+games['team_pt_proj']=-121.32+.06*8.14 +1.12*games['pace_x']+.807*games['total_rebound_percentage']+84.69*games['three_point_field_goal_percentage']+1.065*games['pace_y']-.567*games['opp_rebound_pct']
+games['opp_pt_proj']=-121.32+.06*8.14 +1.12*games['pace_y']+.807*games['opp_rebound_pct']+84.69*games['opp_3p_fgpct']+1.065*games['pace_x']-.567*games['total_rebound_percentage']
+games['bottom_up_total_proj']=games['team_pt_proj']+games['opp_pt_proj']
+
+#takes regressions and alters output due to error causing high point estimates
+games['adj_mod_1']=1.613*(games['proj_total'])-92
+games['adj_mod_2']=1.104*(games['bottom_up_total_proj'])-27.62
+
+from datetime import date
+today = pd.datetime.today() 
+today_next_week = today + relativedelta(days=1)
+upcoming_gms=games.loc[games['datetime'].between(today,today_next_week)]
+
+#drop duplicates...
+#upcoming_gms=upcoming_gms.drop_duplicates(subset='boxscore_index',keep='last')
+
+upcoming_gms['dupe_identifier']=abs(upcoming_gms['fair_value']) #way to identify duplicates
+today_gms=upcoming_gms[['datetime','team','opponent_abbr','fair_value','team_srs','opp_rating','proj_total','pro_ttl_reg2','bottom_up_total_proj','location_adjustment','dupe_identifier']].drop_duplicates(subset=['dupe_identifier']).sort_values(by='datetime') 
+
+today_gms.to_excel("output.xlsx") 
